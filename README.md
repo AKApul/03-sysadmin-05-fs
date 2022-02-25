@@ -23,14 +23,113 @@
     ```
 
     Данная конфигурация создаст новую виртуальную машину с двумя дополнительными неразмеченными дисками по 2.5 Гб.
-
 1. Используя `fdisk`, разбейте первый диск на 2 раздела: 2 Гб, оставшееся пространство.
 
+ ```bash
+vagrant@vagrant:~$ sudo fdisk /dev/sdb
+    Command (m for help): n
+Partition type
+   p   primary (0 primary, 0 extended, 4 free)
+   e   extended (container for logical partitions)
+Select (default p): p
+Partition number (1-4, default 1): 1
+First sector (2048-5242879, default 2048):
+Last sector, +/-sectors or +/-size{K,M,G,T,P} (2048-5242879, default 5242879): 2G
+Value out of range.
+Last sector, +/-sectors or +/-size{K,M,G,T,P} (2048-5242879, default 5242879): +2G
+
+Created a new partition 1 of type 'Linux' and of size 2 GiB.
+Command (m for help): n
+Partition type
+   p   primary (1 primary, 0 extended, 3 free)
+   e   extended (container for logical partitions)
+Select (default p): e
+Partition number (2-4, default 2):
+First sector (4196352-5242879, default 4196352):
+Last sector, +/-sectors or +/-size{K,M,G,T,P} (4196352-5242879, default 5242879):
+
+Created a new partition 2 of type 'Extended' and of size 511 MiB.
+
+Command (m for help): p
+Disk /dev/sdb: 2.51 GiB, 2684354560 bytes, 5242880 sectors
+Disk model: VBOX HARDDISK
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disklabel type: dos
+Disk identifier: 0x53596533
+
+Device     Boot   Start     End Sectors  Size Id Type
+/dev/sdb1          2048 4196351 4194304    2G 83 Linux
+/dev/sdb2       4196352 5242879 1046528  511M  5 Extended
+
+Command (m for help): w
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+Syncing disks.
+ ```
 1. Используя `sfdisk`, перенесите данную таблицу разделов на второй диск.
+
+```bash
+vagrant@vagrant:~$ sudo sfdisk --dump /dev/sdb | sudo sfdisk /dev/sdc
+Checking that no-one is using this disk right now ... OK
+
+Disk /dev/sdc: 2.51 GiB, 2684354560 bytes, 5242880 sectors
+Disk model: VBOX HARDDISK
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+
+>>> Script header accepted.
+>>> Script header accepted.
+>>> Script header accepted.
+>>> Script header accepted.
+>>> Created a new DOS disklabel with disk identifier 0x53596533.
+/dev/sdc1: Created a new partition 1 of type 'Linux' and of size 2 GiB.
+/dev/sdc2: Created a new partition 2 of type 'Extended' and of size 511 MiB.
+/dev/sdc3: Done.
+
+New situation:
+Disklabel type: dos
+Disk identifier: 0x53596533
+
+Device     Boot   Start     End Sectors  Size Id Type
+/dev/sdc1          2048 4196351 4194304    2G 83 Linux
+/dev/sdc2       4196352 5242879 1046528  511M  5 Extended
+
+The partition table has been altered.
+Calling ioctl() to re-read partition table.
+Syncing disks.
+```
 
 1. Соберите `mdadm` RAID1 на паре разделов 2 Гб.
 
+```bash
+vagrant@vagrant:~$ sudo mdadm -C /dev/md1 -l 1 -n 2 /dev/sdb1 /dev/sdc1
+mdadm: Note: this array has metadata at the start and
+    may not be suitable as a boot device.  If you plan to
+    store '/boot' on this device please ensure that
+    your boot-loader understands md/v1.x metadata, or use
+    --metadata=0.90
+Continue creating array? y
+mdadm: Defaulting to version 1.2 metadata
+mdadm: array /dev/md1 started.
+```
+
 1. Соберите `mdadm` RAID0 на второй паре маленьких разделов.
+
+```bash
+vagrant@vagrant:~$ sudo mdadm -C /dev/md0 -l 0 -n 2 /dev/sdb2 /dev/sdc2
+mdadm: partition table exists on /dev/sdb2
+mdadm: partition table exists on /dev/sdb2 but will be lost or
+       meaningless after creating array
+mdadm: partition table exists on /dev/sdc2
+mdadm: partition table exists on /dev/sdc2 but will be lost or
+       meaningless after creating array
+Continue creating array? y
+mdadm: Defaulting to version 1.2 metadata
+mdadm: array /dev/md0 started.
+```
 
 1. Создайте 2 независимых PV на получившихся md-устройствах.
 
